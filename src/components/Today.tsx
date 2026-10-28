@@ -4,10 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { hrefOf, KINDS, kindOf } from "@/config/kinds";
 import { addDays, friendlyDate, parseQuickAdd, REPEAT_LABEL, ymd } from "@/lib/dates";
-import { loadAll, saveItem, toggleDone, type Item } from "@/lib/items";
+import { doneAt, isOverdue, isReviewDue, isRevisitDue, loadAll, RANK, saveItem, toggleDone, type Item } from "@/lib/items";
 import { startFocus } from "@/components/FocusTimer";
-
-const RANK: Record<string, number> = { none: 0, low: 1, medium: 2, high: 3 };
 
 // Home page. Runs in the browser so "today" is the user's local day, and reads the offline cache when there's no network.
 export function Today({ userId }: { userId: string }) {
@@ -25,17 +23,17 @@ export function Today({ userId }: { userId: string }) {
   const now = new Date();
   const today = ymd(now);
   const open = items.filter((i) => i.status === "open" && kindOf(i.kind)?.status);
-  const overdue = open.filter((i) => i.due_date && i.due_date < today);
+  const overdue = open.filter((i) => isOverdue(i, today));
   const dueToday = open.filter((i) => i.due_date === today);
   const important = open
-    .filter((i) => !i.due_date && (RANK[i.priority ?? "none"] ?? 0) >= 2)
+    .filter((i) => !i.due_date && RANK[i.priority ?? "none"] >= 2)
     .sort((a, b) => RANK[b.priority ?? "none"] - RANK[a.priority ?? "none"])
     .slice(0, 5);
-  const reviews = items.filter((i) => i.kind === "learning" && i.status === "open" && i.meta?.next_review && i.meta.next_review <= today).length;
-  const revisits = items.filter((i) => i.kind === "decision" && !i.meta?.outcome && i.due_date && i.due_date <= today).length;
+  const reviews = items.filter((i) => isReviewDue(i, today)).length;
+  const revisits = items.filter((i) => isRevisitDue(i, today)).length;
 
   // Streak: consecutive local days (ending today, or yesterday if nothing is done yet today) with something completed.
-  const doneDays = new Set(items.filter((i) => i.status === "done").map((i) => ymd(new Date(i.updated_at))));
+  const doneDays = new Set(items.filter((i) => i.status === "done").map((i) => ymd(new Date(doneAt(i)))));
   let streak = 0;
   for (let d = doneDays.has(today) ? now : addDays(now, -1); doneDays.has(ymd(d)); d = addDays(d, -1)) streak++;
 
@@ -65,7 +63,7 @@ export function Today({ userId }: { userId: string }) {
 
   const row = (i: Item) => {
     const k = kindOf(i.kind)!;
-    const late = !!i.due_date && i.due_date < today;
+    const late = isOverdue(i, today);
     return (
       <li key={i.id} className="rise flex items-center gap-3 py-2.5">
         <label className="-m-2.5 grid size-11 shrink-0 place-items-center">

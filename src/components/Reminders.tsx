@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { kindOf } from "@/config/kinds";
 import { ymd } from "@/lib/dates";
-import { loadAll } from "@/lib/items";
+import { isOverdue, isReviewDue, isRevisitDue, loadAll } from "@/lib/items";
 import { notify } from "@/lib/notify";
 
 const KEY = "reminded"; // the local day the daily summary was last shown
@@ -28,10 +28,10 @@ export function Reminders() {
 
       const items = await loadAll();
       const open = items.filter((i) => i.status === "open" && kindOf(i.kind)?.status && i.due_date);
-      const overdue = open.filter((i) => i.due_date! < today).length;
+      const overdue = open.filter((i) => isOverdue(i, today)).length;
       const due = open.filter((i) => i.due_date === today).length;
-      const reviews = items.filter((i) => i.kind === "learning" && i.status === "open" && i.meta?.next_review && i.meta.next_review <= today).length;
-      const revisits = items.filter((i) => i.kind === "decision" && !i.meta?.outcome && i.due_date && i.due_date <= today).length;
+      const reviews = items.filter((i) => isReviewDue(i, today)).length;
+      const revisits = items.filter((i) => isRevisitDue(i, today)).length;
       const parts = [
         due && `${due} due today`,
         overdue && `${overdue} overdue`,

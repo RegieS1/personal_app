@@ -7,7 +7,7 @@ import { signOut } from "@/app/(auth)/login/actions";
 function clearLocal() {
   try {
     for (const key of Object.keys(localStorage)) {
-      if (/^(items:|draft:|focus:|budget$|reminded$)/.test(key)) localStorage.removeItem(key);
+      if (/^(items:|draft:|focus:|budget|reminded$)/.test(key)) localStorage.removeItem(key);
     }
   } catch {
     // storage blocked: nothing cached to clear

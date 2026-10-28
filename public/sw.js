@@ -1,8 +1,8 @@
 // Service worker: lets the app open with no connection.
 // - Build assets (/_next/static, icons): cache-first; their URLs change on every deploy.
-// - Pages and their RSC payloads: network-first, falling back to the last copy seen (or Today) when offline.
+// - Pages: network-first, falling back to the last copy seen (or Today) when offline.
 // - Supabase and other origins are untouched; item data has its own offline cache in localStorage.
-const CACHE = "be-positive-v2"; // bump to drop every older cache on activate
+const CACHE = "be-positive-v3"; // bump to drop every older cache on activate (v3: clears piled-up ?_rsc= entries)
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -39,8 +39,10 @@ async function cacheFirst(req) {
 async function networkFirst(req) {
   try {
     const res = await fetch(req);
-    // Don't store redirects (e.g. to /login) under the page's URL.
-    if (res.ok && !res.redirected) (await caches.open(CACHE)).put(req, res.clone());
+    // Don't store redirects (e.g. to /login) under the page's URL. Skip ?_rsc= page-data requests too: each
+    // navigation uses a new value, so caching them would grow forever. Offline, Next falls back to a full page
+    // load, which is cached.
+    if (res.ok && !res.redirected && !new URL(req.url).searchParams.has("_rsc")) (await caches.open(CACHE)).put(req, res.clone());
     return res;
   } catch {
     const hit = await caches.match(req);

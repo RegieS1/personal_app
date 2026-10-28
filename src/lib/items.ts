@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { KINDS, kindOf } from "@/config/kinds";
 import { nextDue, ymd, type Repeat } from "@/lib/dates";
+import { rejected, withOutbox as merge } from "@/lib/outbox";
 
 // Per-area extras stored in items.meta.
 export type Meta = {
@@ -17,6 +18,7 @@ export type Meta = {
   details?: string; // topic: notes (the explanation lives in the notes column)
   example?: string; // topic
   code?: string; // topic: code snippet, whitespace kept
+  done_at?: string; // when it was last completed (updated_at also changes on any edit)
 };
 
 export type Item = {
@@ -39,6 +41,7 @@ export type Item = {
 // Offline layer: localStorage cache per kind + an outbox of full rows to upsert.
 // shortcut: last-write-wins, localStorage size limit; upgrade to IndexedDB/versioned sync if conflicts or volume matter.
 const OUTBOX = "outbox";
+const FAILED = "outbox:failed"; // edits the database refused; kept (never silently dropped) until retried or discarded
 const cacheKey = (kind: string) => `items:${kind}`;
 
 function read<T>(key: string, fallback: T): T {
@@ -57,21 +60,39 @@ const write = (key: string, value: unknown) => {
 };
 
 export async function flush() {
-  const box = read<Record<string, Item>>(OUTBOX, {});
-  const rows = Object.values(box);
+  const rows = Object.values(read<Record<string, Item>>(OUTBOX, {}));
   if (!rows.length) return;
-  const { error } = await createClient().from("items").upsert(rows);
-  if (error) return;
+  const items = () => createClient().from("items");
+  let done = rows;
+  const { error } = await items().upsert(rows);
+  if (error) {
+    if (!rejected(error)) return; // offline or login expired: keep everything for the next try
+    // One refused row fails the whole batch, so send them singly: good rows sync, refused ones are parked.
+    done = [];
+    const failed = read<Record<string, Item>>(FAILED, {});
+    for (const r of rows) {
+      const { error: e } = await items().upsert(r);
+      if (e && !rejected(e)) break; // connection dropped mid-way: the rest stay queued
+      if (e) failed[r.id] = r;
+      done.push(r);
+    }
+    write(FAILED, failed);
+  }
   const current = read<Record<string, Item>>(OUTBOX, {});
-  for (const r of rows) if (current[r.id]?.updated_at === r.updated_at) delete current[r.id];
+  for (const r of done) if (current[r.id]?.updated_at === r.updated_at) delete current[r.id];
   write(OUTBOX, current);
 }
 
-// Rows still waiting in the outbox win over the server copy (they are newer).
-function withOutbox(data: Item[], keep: (i: Item) => boolean) {
-  const box = read<Record<string, Item>>(OUTBOX, {});
-  return [...Object.values(box).filter((i) => keep(i) && !i.deleted_at), ...data.filter((i) => !box[i.id])];
+// Parked edits, surfaced in Settings > Sync.
+export const failedCount = () => Object.keys(read<Record<string, Item>>(FAILED, {})).length;
+export function retryFailed() {
+  write(OUTBOX, { ...read<Record<string, Item>>(FAILED, {}), ...read<Record<string, Item>>(OUTBOX, {}) });
+  write(FAILED, {});
+  return flush();
 }
+export const discardFailed = () => write(FAILED, {});
+
+const withOutbox = (data: Item[], keep: (i: Item) => boolean) => merge(data, read<Record<string, Item>>(OUTBOX, {}), keep);
 
 const offline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
@@ -127,17 +148,26 @@ export async function loadAll(onCached?: (items: Item[]) => void): Promise<Item[
   return merged;
 }
 
+// Shared rules, so every screen (lists, Today, reminders, weekly review) counts the same way.
+export const RANK = { none: 0, low: 1, medium: 2, high: 3 } as const;
+export const isOverdue = (i: Item, today: string) => i.status === "open" && !!i.due_date && i.due_date < today;
+export const isReviewDue = (i: Item, today: string) =>
+  i.kind === "learning" && i.status === "open" && !!i.meta?.next_review && i.meta.next_review <= today;
+export const isRevisitDue = (i: Item, today: string) => i.kind === "decision" && !i.meta?.outcome && !!i.due_date && i.due_date <= today;
+// When something was completed. Older rows predate done_at, so fall back to updated_at.
+export const doneAt = (i: Item) => i.meta?.done_at ?? i.updated_at;
+
 // Completing a repeating item keeps it as done (history and streaks) and queues the next occurrence.
 // shortcut: re-opening a completed repeat doesn't remove the occurrence it spawned; delete that one by hand.
 export function toggleDone(item: Item): Item[] {
-  if (item.status === "done") return saveItem({ ...item, status: "open" });
-  const list = saveItem({ ...item, status: "done" });
+  if (item.status === "done") return saveItem({ ...item, status: "open", meta: { ...item.meta, done_at: undefined } });
+  const list = saveItem({ ...item, status: "done", meta: { ...item.meta, done_at: new Date().toISOString() } });
   const repeat = item.meta?.repeat;
   if (!repeat) return list;
   const now = new Date().toISOString();
   const today = ymd(new Date());
   return saveItem({
-    ...item, id: crypto.randomUUID(), status: "open", due_date: nextDue(item.due_date ?? today, repeat, today),
+    ...item, id: crypto.randomUUID(), status: "open", due_date: nextDue(item.due_date ?? today, repeat, today), meta: { ...item.meta, done_at: undefined },
     created_at: now, updated_at: now, deleted_at: null,
   });
 }

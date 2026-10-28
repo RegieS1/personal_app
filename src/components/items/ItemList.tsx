@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { loadItems, saveItem, searchText, toggleDone, type Item, type Meta } from "@/lib/items";
+import { isOverdue as overdueRule, loadItems, RANK, saveItem, searchText, toggleDone, type Item, type Meta } from "@/lib/items";
 import { addDays, friendlyDate, parseQuickAdd, REPEAT_LABEL, ymd, type Repeat } from "@/lib/dates";
 import { kindOf } from "@/config/kinds";
 import { DatePicker } from "@/components/DatePicker";
 import { startFocus } from "@/components/FocusTimer";
 import dynamic from "next/dynamic";
 import { goalProgress, MoodFace, ProgressRing, projectHealth } from "./extras";
+import { LessonCards } from "./LessonCards";
+import { RowDetails } from "./RowDetails";
 import { TopicBody } from "./TopicBody";
 
 // The per-area panels (budget, heatmap, review queue…) live in one chunk that only areas using a panel download;
@@ -26,7 +27,6 @@ const PAGE = 30;
 
 const FILTERS = ["all", "open", "done", "overdue"] as const;
 const SORTS = { newest: "Newest", due: "Due date", priority: "Priority" } as const;
-const RANK = { none: 0, low: 1, medium: 2, high: 3 } as const;
 const BADGE = {
   low: "bg-accent-2/15 text-accent-2",
   medium: "bg-amber-400/15 text-amber-300",
@@ -84,7 +84,6 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
   const [limit, setLimit] = useState(PAGE);
   const sentinel = useRef<HTMLLIElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const router = useRouter();
   // Per parent too, so a half-typed topic for one lesson never restores (with its link) inside another.
   const draftKey = `draft:${kind}${parentFilter ? `:${parentFilter}` : ""}`;
 
@@ -93,7 +92,7 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
     return loadItems(kind, show).then(show); // device copy first, then the fresh one
   }, [kind]);
   const today = ymd(new Date());
-  const isOverdue = (i: Item) => cfg.status && i.status === "open" && !!i.due_date && i.due_date < today;
+  const isOverdue = (i: Item) => cfg.status && overdueRule(i, today);
   const scoped = parentFilter ? items.filter((i) => i.parent_id === parentFilter) : items;
   const openCount = scoped.filter((i) => i.status === "open").length;
   const update = (item: Item) => setItems(saveItem(item));
@@ -119,11 +118,11 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
     return () => clearTimeout(t);
   }, [undo]);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return scoped
+  // Recomputed each render: filtering a personal list is cheap, and `scoped` is a fresh array anyway.
+  const q = query.trim().toLowerCase();
+  const visible = scoped
       .filter((i) => !q || searchText(i).includes(q))
-      .filter((i) => filter === "all" || (filter === "overdue" ? i.status === "open" && !!i.due_date && i.due_date < today : i.status === filter))
+      .filter((i) => filter === "all" || (filter === "overdue" ? overdueRule(i, today) : i.status === filter))
       .sort((a, b) => {
         if (sort === "priority") return RANK[b.priority ?? "none"] - RANK[a.priority ?? "none"];
         // Items without a due date sort last.
@@ -131,7 +130,6 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
         // Topics keep the order they were added, like a syllabus; everything else is newest first.
         return kind === "topic" ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at);
       });
-  }, [scoped, query, filter, sort, today, kind]);
 
   // Load the next chunk when the "Show more" row scrolls into view (the button stays for keyboard users).
   const hasMore = visible.length > limit;
@@ -403,39 +401,7 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
       </div>
 
       {kind === "lesson" ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 empty:hidden">
-          {visible.map((item) => {
-            if (editing === item.id) return <div key={item.id} className="card p-3 sm:col-span-2">{editForm(item)}</div>;
-            const topics = related.filter((r) => r.parent_id === item.id);
-            // "Updated" reflects the newest change to the lesson or any of its topics.
-            const touched = Math.max(...[item, ...topics].map((i) => Date.parse(i.updated_at)));
-            return (
-              <div key={item.id} className="rise card group relative flex items-start gap-3 p-4 transition hover:-translate-y-0.5 hover:border-accent">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent" aria-hidden>
-                  <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 6.5C10.5 5 8 4.5 4 4.5v13c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-13c-4 0-6.5.5-8 2z M12 6.5v13" />
-                  </svg>
-                </span>
-                <div className="min-w-0 flex-1">
-                  {/* Stretched link: the whole card opens the lesson, and it stays one focusable link for keyboards. */}
-                  <Link href={`/growth?tab=topics&lesson=${item.id}`} className="font-semibold after:absolute after:inset-0 after:rounded-2xl group-hover:text-accent">
-                    {item.title}
-                  </Link>
-                  {item.notes && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{item.notes}</p>}
-                  <p className="mt-2 text-xs text-muted">
-                    {topics.length ? `${topics.length} topic${topics.length > 1 ? "s" : ""}` : "No topics yet"} · Updated {friendlyDate(ymd(new Date(touched)), today)}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setEditing(item.id)} aria-label={`Edit ${item.title}`}
-                  className="relative z-10 -m-1 grid size-10 shrink-0 place-items-center rounded-lg text-muted hover:bg-border/50 hover:text-foreground">
-                  <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-                  </svg>
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <LessonCards lessons={visible} related={related} today={today} editingId={editing} renderEdit={editForm} onEdit={setEditing} />
       ) : (
       <ul className="card mt-4 divide-y divide-border px-4 empty:hidden">
         {visible.slice(0, limit).map((item, idx) => {
@@ -446,7 +412,6 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
           const health = kind === "project" ? projectHealth(item, related, today) : null;
           const parent = parents.find((p) => p.id === item.parent_id);
           const amount = item.amount != null && `${kind === "finance" && m.type !== "income" ? "−" : kind === "finance" ? "+" : ""}${item.amount.toLocaleString()}`;
-          const decisionDue = kind === "decision" && !m.outcome && !!item.due_date && item.due_date <= today;
           // Areas without due dates show when the entry was made instead.
           const dateLine = cfg.due
             ? item.due_date && `${overdue ? "Overdue · " : kind === "decision" ? "Revisit " : "Due "}${friendlyDate(item.due_date, today)}`
@@ -482,12 +447,11 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
               {/* The whole row opens the editor; the title is the keyboard-reachable control for it. */}
               <div className="min-w-0 flex-1 cursor-pointer" onClick={() => {
                 if (kind === "topic") setOpen(open === item.id ? null : item.id);
-                else if (kind === "lesson") router.push(`/growth?tab=topics&lesson=${item.id}`);
                 else setEditing(item.id);
               }}>
                 <p className={item.status === "done" && cfg.status ? "line-through opacity-50" : ""}>
                   {kind === "development" && m.mood && <MoodFace mood={m.mood} className="mr-2 inline size-5 align-text-bottom text-accent" />}
-                  <button type="button" title={kind === "topic" ? "Show topic" : kind === "lesson" ? "Open lesson" : "Edit"} aria-expanded={kind === "topic" ? open === item.id : undefined} className="text-left hover:text-accent">{item.title}</button>
+                  <button type="button" title={kind === "topic" ? "Show topic" : "Edit"} aria-expanded={kind === "topic" ? open === item.id : undefined} className="text-left hover:text-accent">{item.title}</button>
                   {cfg.priority && priority !== "none" && <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs capitalize ${BADGE[priority]}`}>{priority}</span>}
                   {health && <span className={`ml-2 rounded-full px-2 py-0.5 align-middle text-xs ${health.cls}`}>{health.label}</span>}
                   {m.repeat && <span className="ml-2 align-middle text-xs text-muted" title="Repeats">↻ {REPEAT_LABEL[m.repeat]}</span>}
@@ -499,35 +463,7 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
                     .map((part, i) => <span key={i}>{i > 0 && " · "}{part}</span>)}
                 </p>
                 {kind === "topic" && open === item.id && <TopicBody item={item} onEdit={() => setEditing(item.id)} />}
-                {kind === "lesson" && (() => {
-                  const count = related.filter((r) => r.parent_id === item.id).length;
-                  return (
-                    <div className="mt-1 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Link href={`/growth?tab=topics&lesson=${item.id}`} className="chip inline-flex items-center">
-                        {count ? `${count} topic${count > 1 ? "s" : ""} →` : "Add topics →"}
-                      </Link>
-                      <button type="button" onClick={() => setEditing(item.id)} className="chip">Edit</button>
-                    </div>
-                  );
-                })()}
-                {kind === "learning" && (
-                  <p className="text-xs text-muted">
-                    {item.status === "done" ? "Mastered" : m.next_review && `Next review ${friendlyDate(m.next_review, today)}`}
-                  </p>
-                )}
-                {kind === "decision" && (
-                  <div className="mt-1 space-y-0.5 text-sm">
-                    {m.pros && <p className="text-emerald-400">+ {m.pros}</p>}
-                    {m.cons && <p className={BAD}>− {m.cons}</p>}
-                    <p className="text-xs text-muted">Confidence {m.confidence ?? "–"}/5{m.outcome && ` · ${m.outcome === "good" ? "Good call" : "Bad call"}`}</p>
-                    {decisionDue && (
-                      <div className="flex gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
-                        <button className="chip" onClick={() => update({ ...item, status: "done", meta: { ...m, outcome: "good" } })}>Good call</button>
-                        <button className="chip" onClick={() => update({ ...item, status: "done", meta: { ...m, outcome: "bad" } })}>Bad call</button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <RowDetails item={item} today={today} onUpdate={update} />
               </div>
               {pct !== null && <ProgressRing pct={pct} />}
               {kind === "task" && item.status === "open" && (

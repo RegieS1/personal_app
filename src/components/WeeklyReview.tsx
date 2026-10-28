@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { hrefOf, kindOf } from "@/config/kinds";
 import { addDays, friendlyDate, ymd } from "@/lib/dates";
-import { loadAll, saveItem, type Item } from "@/lib/items";
+import { doneAt, isOverdue, loadAll, saveItem, type Item } from "@/lib/items";
 
 // A short guided look back at the last 7 days and ahead at the next 7. The reflection is saved as a Growth check-in.
 export function WeeklyReview({ userId }: { userId: string }) {
@@ -24,8 +24,8 @@ export function WeeklyReview({ userId }: { userId: string }) {
   const local = (iso: string) => ymd(new Date(iso));
   const tracked = items.filter((i) => kindOf(i.kind)?.status);
 
-  const done = tracked.filter((i) => i.status === "done" && local(i.updated_at) > weekAgo);
-  const slipped = tracked.filter((i) => i.status === "open" && i.due_date && i.due_date < today);
+  const done = tracked.filter((i) => i.status === "done" && local(doneAt(i)) > weekAgo);
+  const slipped = tracked.filter((i) => isOverdue(i, today));
   const upcoming = tracked
     .filter((i) => i.status === "open" && i.due_date && i.due_date >= today && i.due_date <= weekAhead)
     .sort((a, b) => a.due_date!.localeCompare(b.due_date!));

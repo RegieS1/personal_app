@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
-import { loadAll } from "@/lib/items";
+import { discardFailed, failedCount, loadAll, retryFailed } from "@/lib/items";
 import { toCsv } from "@/lib/export";
 import { requestNotifications } from "@/lib/notify";
 import { ymd } from "@/lib/dates";
@@ -44,6 +44,9 @@ export function Settings({ email }: { email?: string }) {
   const [theme, setTheme] = useState<Theme | null>(null);
   const [permission, setPermission] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Edits the database refused (see flush in lib/items.ts). Read on every render; `refresh` re-renders after a retry.
+  const failed = useSyncExternalStore(noop, failedCount, () => 0);
+  const [, refresh] = useState(0);
   const current = theme ?? storedTheme;
   const perm = permission ?? storedPermission;
 
@@ -105,6 +108,25 @@ export function Settings({ email }: { email?: string }) {
           </button>
         )}
       </section>
+
+      {failed > 0 && (
+        <section className={`${section} border-red-400/50`} role="alert">
+          <h2 className={heading}>Sync</h2>
+          <p className="text-sm">
+            {failed} edit{failed > 1 ? "s" : ""} couldn&apos;t be saved to your account. Usually a database update (migration) hasn&apos;t
+            been run yet, or the edit came from another account on this device. They&apos;re kept safe here until you choose.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button disabled={busy} onClick={async () => { setBusy(true); await retryFailed(); setBusy(false); refresh((n) => n + 1); }} className="btn-primary disabled:opacity-60">
+              Try again
+            </button>
+            <button disabled={busy} onClick={() => { if (confirm("Discard these unsaved edits? This can't be undone.")) { discardFailed(); refresh((n) => n + 1); } }}
+              className="btn-secondary text-red-400 disabled:opacity-60">
+              Discard
+            </button>
+          </div>
+        </section>
+      )}
 
       <section className={section}>
         <h2 className={heading}>Your data</h2>

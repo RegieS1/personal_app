@@ -2,12 +2,32 @@
 
 // Per-area panels. Each is used on one page only, so ItemList loads them lazily with next/dynamic.
 import { useEffect, useState } from "react";
-import type { Item } from "@/lib/items";
+import { isReviewDue, type Item } from "@/lib/items";
 import { addDays, ymd } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/client";
 import { MOOD_NAMES, MoodFace } from "./extras";
 
 const money = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+// "budget:pending" marks a budget saved on this device but not yet on the profile (offline, or save refused).
+const PENDING = "budget:pending";
+const isPending = () => {
+  try {
+    return localStorage.getItem(PENDING) === "1";
+  } catch {
+    return false;
+  }
+};
+async function pushBudget(userId: string, n: number) {
+  const { error } = await createClient().from("profiles").upsert({ id: userId, budget: n });
+  try {
+    if (error) localStorage.setItem(PENDING, "1");
+    else localStorage.removeItem(PENDING);
+  } catch {
+    // storage blocked: the result still shows on screen
+  }
+  return !error;
+}
 
 const cacheBudget = (n: number) => {
   try {
@@ -22,7 +42,7 @@ const cacheBudget = (n: number) => {
 export const REVIEW_INTERVALS = [1, 3, 7, 21, 60];
 
 export function ReviewQueue({ items, today, onUpdate }: { items: Item[]; today: string; onUpdate: (i: Item) => void }) {
-  const due = items.filter((i) => i.status === "open" && i.meta?.next_review && i.meta.next_review <= today);
+  const due = items.filter((i) => isReviewDue(i, today));
   if (!due.length) return null;
   const item = due[0];
   const step = item.meta?.step ?? 0;
@@ -104,8 +124,14 @@ export function FinanceSummary({ items, today, userId }: { items: Item[]; today:
     }
   });
   const [text, setText] = useState(budget ? String(budget) : "");
+  const [unsaved, setUnsaved] = useState(isPending);
 
   useEffect(() => {
+    // A budget that failed to save is newer than the server's, so push it instead of pulling over it.
+    if (isPending()) {
+      void pushBudget(userId, Number(localStorage.getItem("budget")) || 0).then((ok) => setUnsaved(!ok));
+      return;
+    }
     void createClient().from("profiles").select("budget").eq("id", userId).maybeSingle().then(({ data }) => {
       if (data?.budget == null) return;
       setBudget(Number(data.budget));
@@ -130,7 +156,7 @@ export function FinanceSummary({ items, today, userId }: { items: Item[]; today:
     if (n === budget) return;
     setBudget(n);
     cacheBudget(n);
-    void createClient().from("profiles").upsert({ id: userId, budget: n });
+    void pushBudget(userId, n).then((ok) => setUnsaved(!ok));
   }
 
   return (
@@ -147,6 +173,7 @@ export function FinanceSummary({ items, today, userId }: { items: Item[]; today:
           <input type="number" inputMode="decimal" min="0" value={text} onChange={(e) => setText(e.target.value)} onBlur={saveBudget}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} placeholder="0" aria-label="Monthly budget" className="input w-32 py-1 text-right" />
         </label>
+        {unsaved && <p role="status" className="mt-1 text-xs text-amber-300">Not saved to your account yet. It will retry next time you open Finances.</p>}
         {budget > 0 && (
           <div className="mt-2" role="meter" aria-valuenow={expense} aria-valuemax={budget} aria-label="Budget used">
             <div className="h-2 overflow-hidden rounded-full bg-border">

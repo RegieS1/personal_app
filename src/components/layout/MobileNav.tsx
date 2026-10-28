@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { NAV_ITEMS } from "@/config/nav";
+import { SignOutButton } from "@/components/SignOutButton";
 import { isActive, NavIcon } from "./NavLinks";
 
 const MAIN = 4; // bottom bar holds at most 5 tabs: 4 destinations + More
@@ -29,6 +30,10 @@ export function MobileNav() {
               {label}
             </Link>
           ))}
+          {/* Phones have no sidebar, so sign-out lives here too (also in Settings > Account). */}
+          <div className="col-span-3 border-t border-border pt-1">
+            <SignOutButton className="min-h-11 w-full rounded-lg text-sm text-red-400 hover:bg-red-500/10" />
+          </div>
         </nav>
       )}
       <nav className="flex gap-1 border-t border-border bg-surface/90 p-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur">

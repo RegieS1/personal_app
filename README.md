@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Be Positive
 
-## Getting Started
+A personal productivity app: goals, projects, tasks, decisions, finances, learning (lessons and spaced-review notes), wins and daily check-ins. It works on phones and keeps working offline.
 
-First, run the development server:
+## Features
+
+- **Today**: overdue and due-today items, a quick-add bar ("Gym every monday !high"), review and revisit prompts, a completion streak
+- **Areas**: Goals → Projects → Tasks (progress rings, health badges), Decisions (revisit and outcome tracking), Finances (monthly budget, categories), Growth (Learning with spaced review, Lessons → Topics with notes, examples and code, Wins, Check-ins)
+- Repeating tasks, a focus timer with alarm, Ctrl+K search across everything, a weekly review, JSON/CSV export, reminders, and dark/light themes
+- **Offline-first**: data is cached on the device and edits queue in an outbox that syncs when back online; a service worker lets the app open with no connection
+
+## Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · Supabase (Postgres, Auth, row-level security)
+
+## Setup
+
+1. `npm install`
+2. Copy `.env.example` to `.env.local` and fill in your Supabase project URL and anon key.
+3. In the Supabase SQL editor, run every file in `supabase/migrations/` **in order** (0001 → 0007).
+4. In Supabase → Authentication → URL Configuration, add `http://localhost:3000/auth/callback` (and your deployed URL) to the redirect URLs.
+5. `npm run dev` and open http://localhost:3000
+
+## Checks
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx tsc --noEmit                 # types
+npm run lint                     # lint
+node scripts/dates.check.mjs     # quick-add parser, repeats, friendly dates
+node scripts/export.check.mjs    # CSV export (incl. formula-injection guard)
+node scripts/items.check.mjs     # offline sync merge rules
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How it's built
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **One `items` table** with a `kind` column holds every area; per-area extras live in a `meta` jsonb column. `src/config/kinds.ts` defines the areas and drives the UI.
+- **Sync** (`src/lib/items.ts`): each area is cached in localStorage; edits go to an outbox and are upserted with client-generated ids, so retries are safe. Rows the database refuses are kept aside and shown in Settings → Sync instead of blocking everything else.
+- **Auth**: `src/proxy.ts` checks the session on every request with `getClaims()`; row-level security makes sure each user can only read and write their own rows.
+- **Offline start**: `public/sw.js` (production builds only).

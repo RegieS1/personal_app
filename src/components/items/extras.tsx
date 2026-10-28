@@ -1,7 +1,7 @@
 "use client";
 
 // Helpers used on every list row (kept out of panels.tsx so rows don't pull in the per-area panels).
-import type { Item } from "@/lib/items";
+import { isOverdue, type Item } from "@/lib/items";
 
 /* ---------- Goals & projects ---------- */
 
@@ -32,7 +32,7 @@ export function projectHealth(project: Item, related: Item[], today: string) {
   const open = tasks.filter((t) => t.status === "open");
   if (project.status === "done") return { label: "Done", cls: "bg-accent/15 text-accent" };
   if (!tasks.length) return { label: "No tasks", cls: "bg-border text-muted" };
-  if (open.some((t) => t.due_date && t.due_date < today)) return { label: "At risk", cls: "bg-red-500/15 text-red-400" };
+  if (open.some((t) => isOverdue(t, today))) return { label: "At risk", cls: "bg-red-500/15 text-red-400" };
   const lastTouched = Math.max(...tasks.map((t) => Date.parse(t.updated_at)));
   if (open.length && Date.now() - lastTouched > 14 * 864e5) return { label: "Stalled", cls: "bg-amber-400/15 text-amber-300" };
   return { label: "On track", cls: "bg-emerald-400/15 text-emerald-300" };
