@@ -1,26 +1,126 @@
 @import "tailwindcss";
 
+/* Dark by default; data-theme="light" is set before paint by the script in layout.tsx (Settings > Appearance). */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #07070d;
+  --foreground: #ececf4;
+  --surface: #12121c;
+  --border: #272742;
+  --muted: #8b8ba7;
+  --accent: #8b5cf6;
+  --accent-2: #22d3ee;
 }
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f6f6fb;
+  --foreground: #16161f;
+  --surface: #ffffff;
+  --border: #e2e2ee;
+  --muted: #5d5d76;
+  --accent: #7c3aed;
+  --accent-2: #0891b2;
+}
+
+/* The status colours are tuned for dark backgrounds; use deeper shades on light so text keeps 4.5:1 contrast. */
+:root[data-theme="light"] .text-red-400 { color: #dc2626; }
+:root[data-theme="light"] .text-green-400,
+:root[data-theme="light"] .text-emerald-400,
+:root[data-theme="light"] .text-emerald-300 { color: #047857; }
+:root[data-theme="light"] .text-amber-300 { color: #b45309; }
+:root[data-theme="light"] .shadow-black\/30 { --tw-shadow-color: rgb(0 0 0 / 0.06); }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background:
+    radial-gradient(50rem 28rem at 15% -5%, color-mix(in srgb, var(--accent) 22%, transparent), transparent),
+    radial-gradient(40rem 24rem at 95% 5%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent),
+    radial-gradient(color-mix(in srgb, var(--foreground) 7%, transparent) 1px, transparent 1px) 0 0 / 24px 24px,
+    var(--background);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
   }
 }
 
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+@layer components {
+  .title {
+    @apply bg-linear-to-r from-foreground to-muted bg-clip-text text-3xl font-semibold tracking-tight text-transparent;
+  }
+  .rise {
+    animation: rise 0.35s ease-out both;
+  }
+  .card {
+    @apply rounded-2xl border border-border bg-surface/60 shadow-xl shadow-black/30 backdrop-blur-xl;
+  }
+  .input {
+    @apply w-full rounded-xl border border-border bg-background/60 px-3 py-2 text-base outline-none transition placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent/30;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-xl bg-linear-to-r from-accent to-accent-2 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition hover:brightness-110 active:scale-[.98] focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:outline-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-xl border border-border bg-surface/60 px-4 py-2 text-sm font-medium transition hover:border-accent/60 hover:bg-border/40 active:scale-[.98] focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:outline-none;
+  }
+  .chip {
+    @apply min-h-11 rounded-full border border-border px-4 py-2 text-sm text-muted transition hover:text-foreground aria-pressed:border-accent aria-pressed:bg-accent/15 aria-pressed:text-foreground aria-checked:border-accent aria-checked:bg-accent/15 aria-checked:text-foreground;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
-  background: var(--background);
+  padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  overflow-x: hidden;
+}
+
+/* Removes the double-tap-zoom delay on touch devices. */
+button, a, input, select, summary {
+  touch-action: manipulation;
+}
+
+/* Native option lists don't inherit the translucent .input background, so set solid colors or text can land light-on-white. */
+select option,
+select optgroup {
+  background-color: var(--surface);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Cards (backdrop-filter) and animated rows each form their own stacking context, which traps popups inside them.
+   Lift whichever card/row holds an open popup above its later siblings. */
+.card:has([role="dialog"]),
+li:has([role="dialog"]) {
+  position: relative;
+  z-index: 30;
 }
