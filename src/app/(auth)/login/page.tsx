@@ -1,3 +1,4 @@
+import { PasswordInput } from "@/components/PasswordInput";
 import { SubmitButton } from "@/components/SubmitButton";
 import { forgotPassword, signIn, signUp } from "./actions";
 
@@ -26,7 +27,7 @@ export default async function LoginPage({
         </label>
         <label className="block space-y-1 text-sm font-medium">
           Password
-          <input name="password" type="password" required minLength={6} autoComplete="current-password" className="input font-normal" />
+          <PasswordInput name="password" required minLength={6} autoComplete="current-password" className="input font-normal" />
         </label>
         <div className="flex gap-2">
           <SubmitButton formAction={signIn} className="btn-primary flex-1">Sign in</SubmitButton>

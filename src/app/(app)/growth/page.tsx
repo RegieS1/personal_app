@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ItemList } from "@/components/items/ItemList";
 import { KINDS } from "@/config/kinds";
-import { createClient } from "@/lib/supabase/server";
+import { getClaims } from "@/lib/supabase/server";
 
 const GROWTH = KINDS.filter((k) => "growth" in k);
 const TABS = GROWTH.filter((k) => !("tabHidden" in k));
@@ -12,8 +12,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
   // Topics have no tab of their own; they sit under Lessons.
   const tabFor = active.kind === "topic" ? "lesson" : active.kind;
   const parentFilter = active.kind === "topic" ? lesson : undefined;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const claims = await getClaims();
 
   return (
     <>
@@ -30,7 +29,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Promi
         key={`${active.kind}:${q}:${parentFilter ?? ""}`}
         kind={active.kind}
         label={active.label}
-        userId={user!.id}
+        userId={claims!.sub}
         initialQuery={q}
         parentFilter={parentFilter}
       />

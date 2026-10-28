@@ -14,7 +14,7 @@ export function Today({ userId }: { userId: string }) {
   const [items, setItems] = useState<Item[] | null>(null);
 
   useEffect(() => {
-    const load = () => loadAll().then(setItems);
+    const load = () => loadAll(setItems).then(setItems); // device copy first, then the fresh one
     void load();
     window.addEventListener("online", load);
     return () => window.removeEventListener("online", load);

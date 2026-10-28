@@ -39,7 +39,7 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (!open) return;
-    void loadAll().then(setItems);
+    void loadAll(setItems).then(setItems);
     const t = setTimeout(() => input.current?.focus(), 0);
     return () => clearTimeout(t);
   }, [open]);

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { KINDS } from "@/config/kinds";
+import { KINDS, kindOf } from "@/config/kinds";
 import { nextDue, ymd, type Repeat } from "@/lib/dates";
 
 // Per-area extras stored in items.meta.
@@ -67,7 +67,20 @@ export async function flush() {
   write(OUTBOX, current);
 }
 
-export async function loadItems(kind: string): Promise<Item[]> {
+// Rows still waiting in the outbox win over the server copy (they are newer).
+function withOutbox(data: Item[], keep: (i: Item) => boolean) {
+  const box = read<Record<string, Item>>(OUTBOX, {});
+  return [...Object.values(box).filter((i) => keep(i) && !i.deleted_at), ...data.filter((i) => !box[i.id])];
+}
+
+const offline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+
+// Stale-while-revalidate: `onCached` gets this device's copy right away (so lists appear instantly, online or
+// off), then the promise resolves with fresh server data. Offline it skips the network instead of waiting on it.
+export async function loadItems(kind: string, onCached?: (items: Item[]) => void): Promise<Item[]> {
+  const cached = read<Item[]>(cacheKey(kind), []);
+  if (onCached && cached.length) onCached(cached);
+  if (offline()) return cached;
   await flush();
   const { data, error } = await createClient()
     .from("items")
@@ -75,10 +88,8 @@ export async function loadItems(kind: string): Promise<Item[]> {
     .eq("kind", kind)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
-  if (error || !data) return read<Item[]>(cacheKey(kind), []);
-  // Keep rows still waiting in the outbox on top of the server copy.
-  const box = read<Record<string, Item>>(OUTBOX, {});
-  const merged = [...Object.values(box).filter((i) => i.kind === kind && !i.deleted_at), ...data.filter((i) => !box[i.id])];
+  if (error || !data) return cached;
+  const merged = withOutbox(data, (i) => i.kind === kind);
   write(cacheKey(kind), merged);
   return merged;
 }
@@ -97,8 +108,24 @@ export function saveItem(item: Item): Item[] {
 export const searchText = (i: Item) =>
   [i.title, i.notes, i.meta?.details, i.meta?.example, i.meta?.code].filter(Boolean).join(" ").toLowerCase();
 
-// Every area at once (search, export, weekly review); each falls back to its offline cache.
-export const loadAll = async () => (await Promise.all(KINDS.map((k) => loadItems(k.kind)))).flat();
+// Every area at once (Today, search, export, weekly review) in a single request, refreshing each area's cache.
+// Rows of kinds the app no longer has (e.g. removed areas) are left out, as before.
+export async function loadAll(onCached?: (items: Item[]) => void): Promise<Item[]> {
+  const cachedAll = () => KINDS.flatMap((k) => read<Item[]>(cacheKey(k.kind), []));
+  const cached = cachedAll();
+  if (onCached && cached.length) onCached(cached);
+  if (offline()) return cached;
+  await flush();
+  const { data, error } = await createClient()
+    .from("items")
+    .select("*")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+  if (error || !data) return cached;
+  const merged = withOutbox(data, () => true).filter((i) => kindOf(i.kind));
+  for (const k of KINDS) write(cacheKey(k.kind), merged.filter((i) => i.kind === k.kind));
+  return merged;
+}
 
 // Completing a repeating item keeps it as done (history and streaks) and queues the next occurrence.
 // shortcut: re-opening a completed repeat doesn't remove the occurrence it spawned; delete that one by hand.

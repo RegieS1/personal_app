@@ -12,7 +12,7 @@ export function WeeklyReview({ userId }: { userId: string }) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    void loadAll().then(setItems);
+    void loadAll(setItems).then(setItems);
   }, []);
 
   if (!items) return <><h1 className="title">Weekly review</h1><p className="mt-1 text-sm text-muted">Loading…</p></>;

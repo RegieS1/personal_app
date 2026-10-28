@@ -88,7 +88,10 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
   // Per parent too, so a half-typed topic for one lesson never restores (with its link) inside another.
   const draftKey = `draft:${kind}${parentFilter ? `:${parentFilter}` : ""}`;
 
-  const refresh = useCallback(() => loadItems(kind).then((list) => { setItems(list); setLoaded(true); }), [kind]);
+  const refresh = useCallback(() => {
+    const show = (list: Item[]) => { setItems(list); setLoaded(true); };
+    return loadItems(kind, show).then(show); // device copy first, then the fresh one
+  }, [kind]);
   const today = ymd(new Date());
   const isOverdue = (i: Item) => cfg.status && i.status === "open" && !!i.due_date && i.due_date < today;
   const scoped = parentFilter ? items.filter((i) => i.parent_id === parentFilter) : items;
@@ -99,8 +102,8 @@ export function ItemList({ kind, label, userId, initialQuery = "", parentFilter 
   useEffect(() => {
     void refresh();
     const parentKind = PARENT_KIND[kind];
-    if (parentKind) void loadItems(parentKind).then(setParents);
-    void Promise.all((CHILD_KINDS[kind] ?? []).map(loadItems)).then((lists) => setRelated(lists.flat()));
+    if (parentKind) void loadItems(parentKind, setParents).then(setParents);
+    void Promise.all((CHILD_KINDS[kind] ?? []).map((k) => loadItems(k))).then((lists) => setRelated(lists.flat()));
     window.addEventListener("online", refresh);
     return () => window.removeEventListener("online", refresh);
   }, [kind, refresh]);

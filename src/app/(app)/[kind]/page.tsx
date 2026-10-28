@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { ItemList } from "@/components/items/ItemList";
 import { hrefOf, KINDS } from "@/config/kinds";
-import { createClient } from "@/lib/supabase/server";
+import { getClaims } from "@/lib/supabase/server";
 
 export default async function KindPage({
   params,
@@ -17,8 +17,7 @@ export default async function KindPage({
   // Learning, Wins and Check-ins live as tabs on /growth; keep their old URLs working.
   if ("growth" in entry) redirect(`${hrefOf(entry)}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const claims = await getClaims();
   // Keyed on the search too, so arriving from global search with a new ?q= starts fresh.
-  return <ItemList key={`${entry.kind}:${q}`} kind={entry.kind} label={entry.label} userId={user!.id} initialQuery={q} />;
+  return <ItemList key={`${entry.kind}:${q}`} kind={entry.kind} label={entry.label} userId={claims!.sub} initialQuery={q} />;
 }
