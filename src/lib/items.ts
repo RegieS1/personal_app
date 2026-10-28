@@ -14,6 +14,9 @@ export type Meta = {
   category?: string;
   mood?: number; // development check-in, 1-5
   repeat?: Repeat; // task: recurring schedule
+  details?: string; // topic: notes (the explanation lives in the notes column)
+  example?: string; // topic
+  code?: string; // topic: code snippet, whitespace kept
 };
 
 export type Item = {
@@ -89,6 +92,10 @@ export function saveItem(item: Item): Item[] {
   void flush();
   return next;
 }
+
+// What search matches against: title, notes, and the long-form topic fields.
+export const searchText = (i: Item) =>
+  [i.title, i.notes, i.meta?.details, i.meta?.example, i.meta?.code].filter(Boolean).join(" ").toLowerCase();
 
 // Every area at once (search, export, weekly review); each falls back to its offline cache.
 export const loadAll = async () => (await Promise.all(KINDS.map((k) => loadItems(k.kind)))).flat();

@@ -4,28 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NAV_ITEMS } from "@/config/nav";
 import { hrefOf, kindOf } from "@/config/kinds";
-import { loadAll, type Item } from "@/lib/items";
-
-const OPEN_EVENT = "open-search";
-export const openSearch = () => window.dispatchEvent(new Event(OPEN_EVENT));
+import { loadAll, searchText, type Item } from "@/lib/items";
+import { OPEN_EVENT, takePendingOpen } from "./SearchButton";
 
 type Result = { key: string; label: string; hint: string; href: string };
-
-export function SearchButton({ className, children }: { className: string; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={openSearch} aria-label="Search everything" className={className}>
-      <svg viewBox="0 0 24 24" className="size-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden>
-        <path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M21 21l-4.3-4.3" />
-      </svg>
-      {children}
-    </button>
-  );
-}
 
 // Ctrl/Cmd+K (or the search buttons) opens a search over every page and every saved item.
 export function CommandPalette() {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(takePendingOpen);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<Item[]>([]);
   const [active, setActive] = useState(0);
@@ -38,7 +25,10 @@ export function CommandPalette() {
         setOpen((o) => !o);
       }
     };
-    const show = () => setOpen(true);
+    const show = () => {
+      takePendingOpen(); // already handled live, so a later mount will not reopen it
+      setOpen(true);
+    };
     window.addEventListener("keydown", key);
     window.addEventListener(OPEN_EVENT, show);
     return () => {
@@ -59,7 +49,7 @@ export function CommandPalette() {
     const pages = NAV_ITEMS.filter((n) => !q || n.label.toLowerCase().includes(q)).map((n) => ({ key: n.href, label: n.label, hint: "Go to", href: n.href }));
     if (!q) return pages;
     const found = items
-      .filter((i) => `${i.title} ${i.notes ?? ""}`.toLowerCase().includes(q))
+      .filter((i) => searchText(i).includes(q))
       .slice(0, 20)
       .map((i) => {
         const k = kindOf(i.kind)!;

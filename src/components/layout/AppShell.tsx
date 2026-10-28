@@ -1,4 +1,5 @@
-import { CommandPalette, SearchButton } from "@/components/CommandPalette";
+import { LazyCommandPalette } from "@/components/LazyCommandPalette";
+import { SearchButton } from "@/components/SearchButton";
 import { FocusTimer } from "@/components/FocusTimer";
 import { Reminders } from "@/components/Reminders";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -44,7 +45,7 @@ export function AppShell({ email, children }: { email?: string; children: React.
 
       <FocusTimer />
       <MobileNav />
-      <CommandPalette />
+      <LazyCommandPalette />
       <Reminders />
     </div>
   );
