@@ -2,7 +2,7 @@
 // - Build assets (/_next/static, icons): cache-first; their URLs change on every deploy.
 // - Pages: network-first, falling back to the last copy seen (or Today) when offline.
 // - Supabase and other origins are untouched; item data has its own offline cache in localStorage.
-const CACHE = "be-positive-v3"; // bump to drop every older cache on activate (v3: clears piled-up ?_rsc= entries)
+const CACHE = "be-positive-v4"; // bump to drop every older cache on activate
 
 self.addEventListener("install", () => self.skipWaiting());
 
@@ -48,14 +48,36 @@ async function networkFirst(req) {
     const hit = await caches.match(req);
     if (hit) return hit;
     if (req.mode === "navigate") {
-      const home = await caches.match("/");
-      if (home) return home;
+      // Not saved with this exact query (e.g. /tasks?q=…): the same page without it beats falling back to Today.
+      const page = (await caches.match(req, { ignoreSearch: true })) ?? (await caches.match("/"));
+      if (page) return page;
     }
     return new Response("You're offline and this page hasn't been opened before.", {
       status: 503,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
+}
+
+// The app sends its page list while online, so pages work offline even if they were never opened.
+// Page HTML holds no user data (lists load from the device copy), so saving it ahead of time is safe.
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "precache" || !Array.isArray(event.data.urls)) return;
+  event.waitUntil(precache(event.data.urls));
+});
+
+async function precache(urls) {
+  const cache = await caches.open(CACHE);
+  await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const res = await fetch(url, { credentials: "same-origin" });
+        if (res.ok && !res.redirected) await cache.put(url, res); // signed out: /login redirect, skip
+      } catch {
+        // offline or server hiccup: try again next time
+      }
+    }),
+  );
 }
 
 // Tapping a reminder opens (or focuses) the app.

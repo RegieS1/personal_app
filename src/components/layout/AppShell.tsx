@@ -2,6 +2,7 @@ import { LazyCommandPalette } from "@/components/LazyCommandPalette";
 import { SearchButton } from "@/components/SearchButton";
 import { FocusTimer } from "@/components/FocusTimer";
 import { Reminders } from "@/components/Reminders";
+import { OfflinePages } from "@/components/ServiceWorker";
 import { SignOutButton } from "@/components/SignOutButton";
 import { MobileNav } from "./MobileNav";
 import { NavLinks } from "./NavLinks";
@@ -47,6 +48,7 @@ export function AppShell({ email, children }: { email?: string; children: React.
       <MobileNav />
       <LazyCommandPalette />
       <Reminders />
+      <OfflinePages />
     </div>
   );
 }

@@ -7,7 +7,8 @@ import { signOut } from "@/app/(auth)/login/actions";
 function clearLocal() {
   try {
     for (const key of Object.keys(localStorage)) {
-      if (/^(items:|draft:|focus:|budget|reminded$)/.test(key)) localStorage.removeItem(key);
+      // precached-at too, so the next account's pages are saved for offline right after it signs in.
+      if (/^(items:|draft:|focus:|budget|reminded$|precached-at$)/.test(key)) localStorage.removeItem(key);
     }
   } catch {
     // storage blocked: nothing cached to clear

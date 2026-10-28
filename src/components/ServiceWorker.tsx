@@ -1,6 +1,49 @@
 "use client";
 
 import { useEffect } from "react";
+import { hrefOf, KINDS } from "@/config/kinds";
+import { NAV_ITEMS } from "@/config/nav";
+
+const PRECACHED_AT = "precached-at";
+const EVERY_MS = 6 * 3600_000;
+
+// Every page a tap can lead to: the nav, each Growth tab, and each lesson (read from the device copy).
+function appPages() {
+  let lessons: { id: string }[] = [];
+  try {
+    lessons = JSON.parse(localStorage.getItem("items:lesson") ?? "[]");
+  } catch {
+    // no cached lessons yet
+  }
+  return [
+    ...new Set([
+      ...NAV_ITEMS.map((n) => n.href),
+      ...KINDS.map(hrefOf),
+      ...lessons.map((l) => `/growth?tab=topics&lesson=${l.id}`),
+    ]),
+  ];
+}
+
+// Ask the worker to save every page while online (at most every 6 hours), so offline taps don't fall back to Today.
+// Called from the signed-in app shell (OfflinePages), not the root layout: signed out, every page redirects to login.
+export async function precache() {
+  try {
+    if (!navigator.onLine || Date.now() - Number(localStorage.getItem(PRECACHED_AT)) < EVERY_MS) return;
+    const reg = await navigator.serviceWorker.ready;
+    reg.active?.postMessage({ type: "precache", urls: appPages() });
+    localStorage.setItem(PRECACHED_AT, String(Date.now()));
+  } catch {
+    // storage blocked or no worker: pages still get saved as they're visited
+  }
+}
+
+// Mounted inside the signed-in app shell.
+export function OfflinePages() {
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) void precache();
+  }, []);
+  return null;
+}
 
 export function ServiceWorker() {
   useEffect(() => {
